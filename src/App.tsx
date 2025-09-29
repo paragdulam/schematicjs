@@ -333,7 +333,7 @@ export default function App() {
   return (
     <div style={{ padding: "20px" }}>
       <h1>Schematic Viewer</h1>
-      <Schematic data={S4} />
+      <Schematic data={S9} />
     </div>
   );
 }

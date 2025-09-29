@@ -96,34 +96,19 @@ export default function Schematic({ data }: { data: SchematicData }) {
   const connectorNamePadding = 25;
   const spaceForWires = 50;
 
+  var maxX = padding;
+  var maxY = padding + componentSize.height + spaceForWires + componentSize.height + padding;
+
   useEffect(() => {
-    const allRects = [...data.components];
-    if (allRects.length === 0) return;
-
-    const minX = 0;
-    const minY = 0;
-    const maxX = componentSize.width;
-    const maxY = componentSize.height * 2 + spaceForWires;
-
-    const width = maxX - minX + padding * 2;
-    const height = maxY - minY + padding * 2;
-
-    const newBox = {
-      x: minX - padding,
-      y: minY - padding,
-      w: width,
-      h: height,
-    };
-    setViewBox(newBox);
-    setFitViewBox(newBox);
-
     var newWidths: { [id: string]: number } = {};
     var connWidths: { [id: string]: number } = {};
-    data.components.forEach((comp) => {
+
+    data.components.forEach((comp, i) => {
       const ref = componentNameRefs.current[comp.id];
       if (ref) {
         newWidths[comp.id] = ref.getBBox().width;
       }
+      maxX += padding + newWidths[comp.id];  
       comp.connectors.forEach((conn) => {
         const ref = connectorNameRefs.current[conn.id];
         if (ref) {
@@ -142,6 +127,17 @@ export default function Schematic({ data }: { data: SchematicData }) {
       connCount[toConnector] = (connCount[toConnector] || 0) + 1;
     });
     setConnectorConnectionCount(connCount);
+
+    const newBox = {
+      x: 0,
+      y: 0,
+      w: maxX + padding,
+      h: maxY,
+    };
+    setViewBox(newBox);
+    setFitViewBox(newBox);
+
+
   }, [data]);
 
   // Remove wheel gesture
@@ -395,7 +391,7 @@ export default function Schematic({ data }: { data: SchematicData }) {
       </div>
 
       <svg
-        width="1024"
+        width={"1024"}
         height="768"
         style={{
           border: "1px solid #ccc",
