@@ -91,13 +91,19 @@ export default function Schematic({ data }: { data: SchematicData }) {
     [id: string]: number;
   }>({});
 
+  var connectionPoints: { [id: string]: { x: number; y: number } } = {};
+
   const componentSize = { width: 100, height: 60 };
   const padding = 50;
   const connectorNamePadding = 25;
-  const spaceForWires = 50;
 
-  var maxX = padding;
-  var maxY = padding + componentSize.height + spaceForWires + componentSize.height + padding;
+  var maxX = 0;
+  var maxY =
+    padding +
+    componentSize.height +
+    spaceForWires() +
+    componentSize.height +
+    padding;
 
   useEffect(() => {
     var newWidths: { [id: string]: number } = {};
@@ -108,7 +114,7 @@ export default function Schematic({ data }: { data: SchematicData }) {
       if (ref) {
         newWidths[comp.id] = ref.getBBox().width;
       }
-      maxX += padding + newWidths[comp.id];  
+      maxX += newWidths[comp.id];
       comp.connectors.forEach((conn) => {
         const ref = connectorNameRefs.current[conn.id];
         if (ref) {
@@ -131,13 +137,11 @@ export default function Schematic({ data }: { data: SchematicData }) {
     const newBox = {
       x: 0,
       y: 0,
-      w: maxX + padding,
+      w: maxX,
       h: maxY,
     };
     setViewBox(newBox);
     setFitViewBox(newBox);
-
-
   }, [data]);
 
   // Remove wheel gesture
@@ -158,10 +162,28 @@ export default function Schematic({ data }: { data: SchematicData }) {
     setViewBox({ x, y, w: newW, h: newH });
   };
 
-  function getConnectionOffset(index: number, y1: number, y2: number, offsetStep = 10) {
+  function spaceForWires() {
+    let connectionsCount = data.connections.length;
+    return (connectionsCount * 10) + 40; // 10px per connection + padding
+  }
+
+  function connectionPointKey(point: ConnectionPoint): string {
+    return `${point.componentId}_${point.connectorId}_${point.cavity}`;
+  }
+
+  function getConnectionOffset(
+    index: number,
+    count: number,
+    y1: number,
+    y2: number,
+    offsetStep = 10
+  ) {
     let max = Math.max(y1, y2);
     let min = Math.min(y1, y2);
-    return (max - min) - ((index + 1) * offsetStep);
+    let mid = count / 2;
+    let offset = ((index + 1) * offsetStep) + offsetStep
+    let reverseOffset = max - min - ((index + 1) * offsetStep) - offsetStep
+    return index < mid ? offset : reverseOffset; 
   }
 
   function getIntersection(
@@ -195,7 +217,7 @@ export default function Schematic({ data }: { data: SchematicData }) {
     x2: number,
     y1: number,
     y2: number
-  ) : JSX.Element | undefined {
+  ): JSX.Element | undefined {
     let intersection = null;
     for (let j = 0; j < data.connections.length; j++) {
       if (i === j) continue;
@@ -262,6 +284,13 @@ export default function Schematic({ data }: { data: SchematicData }) {
   }
 
   function getWidthForComponent(component: ComponentType): number {
+    let index = data.components.findIndex((c) => c.id === component.id);
+    if (index == 0) {
+      let last = data.components[data.components.length - 1];
+      let lastX = getXForComponent(last);
+      let lastWidth = getWidthForComponent(last);
+      return lastX + lastWidth;
+    }
     if (component.connectors.length == 1) {
       return componentNameWidths[component.id] + padding;
     } else {
@@ -292,7 +321,7 @@ export default function Schematic({ data }: { data: SchematicData }) {
     const y =
       index < 1
         ? padding
-        : padding + componentSize.height + spaceForWires + componentSize.height;
+        : padding + componentSize.height + spaceForWires() + componentSize.height;
     return y;
   }
 
@@ -326,7 +355,21 @@ export default function Schematic({ data }: { data: SchematicData }) {
       : getYForComponent(component) - 10;
   }
 
+  function getConnectionsForConnector(conn: ConnectorType): ConnectionType[] {
+    return data.connections.filter(
+      (c) => c.from.connectorId === conn.id || c.to.connectorId === conn.id
+    );
+  }
+
   function getWidthForConnector(conn: ConnectorType): number {
+    let connections = getConnectionsForConnector(conn);
+    let interConnectionSpacing = 15;
+    if (connections.length > 1) {
+      let connectionsBasedWidth = (connections.length + 1) * interConnectionSpacing;
+      return (
+        Math.max(connectionsBasedWidth, connectorNameWidths[conn.id] + connectorNamePadding)
+      );
+    }
     return connectorNameWidths[conn.id] + connectorNamePadding;
   }
 
@@ -345,6 +388,21 @@ export default function Schematic({ data }: { data: SchematicData }) {
       }
     }
     return [undefined, undefined];
+  }
+
+  function getContrastingColor(hex: string): string {
+    // Remove '#' if present
+    hex = hex.replace(/^#/, "");
+    // Parse r, g, b
+    let r = parseInt(hex.substring(0, 2), 16);
+    let g = parseInt(hex.substring(2, 4), 16);
+    let b = parseInt(hex.substring(4, 6), 16);
+
+    // Calculate luminance
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+
+    // If luminance is high, return black; else, return white
+    return luminance > 0.5 ? "#000000" : "#FFFFFF";
   }
 
   return (
@@ -403,8 +461,6 @@ export default function Schematic({ data }: { data: SchematicData }) {
         onMouseUp={handleMouseUp}
         onMouseMove={handleMouseMove}
       >
-        <rect width="100%" height="100%" fill="url(#grid)" />
-
         {data.components.map((comp, componentIndex) => (
           <g key={comp.id}>
             {comp.shape === "rectangle" && (
@@ -420,19 +476,6 @@ export default function Schematic({ data }: { data: SchematicData }) {
                   // Your callback logic here
                   console.log("Rectangle clicked!");
                 }}
-              />
-            )}
-            {comp.shape === "circle" && (
-              <rect
-                x={getXForComponent(comp)}
-                y={getYForComponent(comp)}
-                width={getWidthForComponent(comp)}
-                height={componentSize.height}
-                fill="lightblue"
-                stroke="black"
-                rx={5}
-                ry={5}
-                strokeDasharray={componentIndex !== 0 ? "6,4" : undefined}
               />
             )}
             <text
@@ -498,55 +541,80 @@ export default function Schematic({ data }: { data: SchematicData }) {
           let toIndex = data.components.findIndex(
             (c) => c.id === toComponent!.id
           );
-          const fromConnectorX = getXForConnector(from, fromComponent!);
-          const fromConnectorWidth = getWidthForConnector(from);
-          const fromConnectorCount = connectorConnectionCount[from.id] || 1;
-          const fromConnectorOffset =
-            fromConnectorCount == 1
-              ? fromConnectorWidth / 2
-              : (fromConnectorWidth / (fromConnectorCount + 1)) * (i + 1);
-          const x1 = fromConnectorX + fromConnectorOffset;
 
-          const y1 =
-            fromIndex == 0
-              ? getYForConnector(from, fromComponent!) + 20
-              : getYForConnector(from, fromComponent!);
+          var fromStoredConnectionPoint =
+            connectionPoints[connectionPointKey(wire.from)];
 
-          const toConnectorX = getXForConnector(to, toComponent!);
-          const toConnectorWidth = getWidthForConnector(to);
-          const toConnectorCount = connectorConnectionCount[to.id] || 1;
-          const toConnectorOffset =
-            toConnectorCount == 1
-              ? toConnectorWidth / 2
-              : (toConnectorWidth / (toConnectorCount + 1)) * (i + 1);
-          const x2 = toConnectorX + toConnectorOffset;
-          const y2 =
-            toIndex == 0
-              ? getYForConnector(to, toComponent!) + 20
-              : getYForConnector(to, toComponent!);
+          var fromX = fromStoredConnectionPoint?.x;
+          if (fromX == undefined) {
+            const fromConnectorX = getXForConnector(from, fromComponent!);
+            const fromConnectorWidth = getWidthForConnector(from);
+            const fromConnectorCount = connectorConnectionCount[from.id] || 1;
+            const fromConnectorOffset =
+              fromConnectorCount == 1
+                ? fromConnectorWidth / 2
+                : (fromConnectorWidth / (fromConnectorCount + 1)) * (i + 1);
 
-          // Helper to check intersection between two lines
+            fromX = fromConnectorX + fromConnectorOffset;
+          }
 
-          // Find intersection with other wires, only give hump to the wire with higher index
+          var fromY = fromStoredConnectionPoint?.y;
+          if (fromY == undefined) {
+            fromY =
+              fromIndex == 0
+                ? getYForConnector(from, fromComponent!) + 20
+                : getYForConnector(from, fromComponent!);
+          }
 
-          const offset = getConnectionOffset(i, y1,y2,10);
-          let min = Math.min(y1,y2);
-          let wireElement;        
+          connectionPoints[connectionPointKey(wire.from)] = {
+            x: fromX,
+            y: fromY,
+          };
+
+          var toStoredConnectionPoint =
+            connectionPoints[connectionPointKey(wire.to)];
+          var toX = toStoredConnectionPoint?.x;
+          if (toX == undefined) {
+            const toConnectorX = getXForConnector(to, toComponent!);
+            const toConnectorWidth = getWidthForConnector(to);
+            const toConnectorCount = connectorConnectionCount[to.id] || 1;
+            const toConnectorOffset =
+              toConnectorCount == 1
+                ? toConnectorWidth / 2
+                : (toConnectorWidth / (toConnectorCount + 1)) * (i + 1);
+
+            toX = toConnectorX + toConnectorOffset;
+          }
+          var toY = toStoredConnectionPoint?.y;
+          if (toY == undefined) {
+            toY =
+              toIndex == 0
+                ? getYForConnector(to, toComponent!) + 20
+                : getYForConnector(to, toComponent!);
+          }
+
+          connectionPoints[connectionPointKey(wire.to)] = { x: toX, y: toY };
+
+          const offset = getConnectionOffset(i, data.connections.length,fromY, toY, 10);
+          let min = Math.min(fromY, toY);
+          let wireElement;
           wireElement = (
             <g>
-              <circle cx={x1} cy={y1} r={5} fill={wire.color}></circle>
+              <circle cx={fromX} cy={fromY} r={5} fill={wire.color}></circle>
               <polyline
                 key={i}
-                points={`${x1},${y1} ${x1},${min + offset} ${x2},${min + offset} ${x2},${y2}`}
+                points={`${fromX},${fromY} ${fromX},${min + offset} ${toX},${
+                  min + offset
+                } ${toX},${toY}`}
                 fill="none"
                 stroke={wire.color}
                 strokeWidth={2}
                 markerEnd="url(#arrowhead)"
               />
-              <circle cx={x2} cy={y2} r={5} fill={wire.color}></circle>
+              <circle cx={toX} cy={toY} r={5} fill={wire.color}></circle>
               <text
-                x={x1}
-                y={y1}
+                x={fromX}
+                y={fromY}
                 textAnchor="middle"
                 fontSize="5"
                 alignmentBaseline="middle"
@@ -555,8 +623,8 @@ export default function Schematic({ data }: { data: SchematicData }) {
                 {wire.from.cavity}
               </text>
               <text
-                x={x2}
-                y={y2}
+                x={toX}
+                y={toY}
                 textAnchor="middle"
                 fontSize="5"
                 alignmentBaseline="middle"
