@@ -433,7 +433,7 @@ const ICC = {
         cavity: "A",
       },
       to: {
-        componentId: "Instrument Cluster Controller",
+        componentId: "ICC",
         connectorId: "XJ1",
         cavity: "17",
       },
